@@ -63,6 +63,7 @@ We employ two logistic regression models to estimate the probabilities of voting
 
 Where $p$ represents the probability of whether or not a person will vote for Donald Trump in one version of the model, and Joe Biden in the other version. 
 In both models, $\beta_0$ represents the intercept of the model. The coefficients $\beta_1, \beta_2, ..., \beta_{12}$ are the respective coefficients for each term, which represent the change in log odds of a person's intention to vote for a given candidate. The binary variables corresponding to $beta_1$ to $\beta_3$ represent whether or not the person is within the age ranges 30-44, 45-59, or over 60. The binary variables corresponding to $\beta_4$ through $\beta_8$ represent race and classify whether the person is of the groups Chinese or Japanese, Native American, Non-Chinese or Japanese Asians, White, and Other races. The binary variables corresponding to $\beta_{10}$ through $\beta_{12}$ represent education level, in the 3 categories: Less than High School, High School Graduate, and Some College. 
+
 ```{r models, echo=FALSE, include = FALSE}
 
 # Creating the Model
