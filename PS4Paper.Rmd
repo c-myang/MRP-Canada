@@ -1,0 +1,287 @@
+---
+title: "Title"
+subtitle: "Subtitle"
+author: "Redacted"
+date: "December 21st, 2020"
+abstract: "4 sentence abstract. Keywords: "
+output:
+  bookdown::pdf_document2:
+    citation_package: natbib
+    toc: false
+    number_sections: false 
+    nocite: '@*'
+bibliography: PS4refs.bib
+biblio-style: "apalike"
+---
+\pagenumbering{gobble}
+\begin{center}
+Code supporting this analysis can be found at: https://github.com/c-myang/sta304-final 
+\end{center}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+
+library(tidyverse)
+library(jtools) #Create plots and tables for regression models
+library(ggplot2) #Create plots and diagrams
+library(huxtable) #Make tables
+
+# Loading in the cleaned survey Data
+survey_data <- read_csv("survey_data.csv")
+
+# Loading in the cleaned census Data
+census_data <- read_csv("census_data.csv")
+```
+# Introduction
+
+
+# Methods
+## Model
+
+In this analysis, we are interested in predicting the popular vote and outcome of the 2020 U.S. federal election [@bacon_issues_2020]. To do so, we are creating logistic regression models to model the probability of voting for candidates Trump and Biden, using  survey data from the UCLA Nationscape Voter Study Group [@tausanovitch_ucla_2020]. We then employ a post-stratification technique to estimate the proportion of voters for each candidate at a national scale to determine the popular vote, then at the state scale to determine the distribution of Electoral College votes. All data cleaning, modelling, and calculations are carried out using R statistical language [@citeR] and the tidyverse package [@citeTidy]. The model specifics and post-stratification calculations are described in subsequent sections.
+
+## Variables and data cleaning 
+
+To aggregate the variables into meaningful groups and to ensure that the survey data corresponds to census data, each variable was reclassified into new categories. We chose the factors of sex, age, race, and education level. Age was aggregated into 4 groups: 18-29, 30-44, 45-60, and 60+ and subjects under 18 were filtered out. Race was categorized into 6 categories: White, Black/African American, Chinese or Japanese, Other Asian/Pacific Islander, and Native American/Alaskan Native, and Other. Finally, education level was categorized into 4 groups: less than high school, high school graduate, some college, and college graduate.
+
+Our selection of variables was influenced by studies examining the links between voter demographics and voting intention during the 2018 midterm election. One study by The Economist showed that the four most important demographic categories for predicting voter preference were religion, race, sexual orientation, and education [@noauthor_how_2018]. We would have liked to consider all these factors in our model, but were limited by the census data which did not collect religion or sexual orientation. The other two factors we included in the model were age and sex, which were also ranked highly in the same study.  
+
+## Model Specifics
+We employ two logistic regression models to estimate the probabilities of voting for Trump and for Biden based on individual variables. Another model considered for this analysis was a multilevel logistic model with state as a group effect. However, this model assumes that individuals nested in the same groups display similar characteristics [@sommet_keep_2017], which may be too large of an assumption to make for general demographic characteristics at a state scale. Rather, our aim was to examine voter intention based on individual characteristics, and aggregate to a state-level and national scale based on the electorate demographic composition, solidifying our choice to use a logistic regression model. The proposed logistic model equation is outlined in Equation 1 below:
+\begin{center}
+\textbf{(1) Logistic model equation of voter intention for a major 2020 U.S. Presidential candidate}
+\vspace*{-7mm}
+\end{center}
+\begin{eqnarray*}
+  log({\frac{p }{1-p}}) &=& \beta_0 + \beta_1 (age_{30-44}) + \beta_2 (age_{45-59}) + \beta_3 (age_{60+}) \\
+  &+& \beta_4 (race_{CHN-JP}) + \beta_5 (race_{native})  \beta_6 (race_{other}) + \beta_7 (race_{Asian}) + \beta_8(race_{white}) \\        &+& \beta_{9} (gender_{male}) \\
+  &+& \beta_{10} (education_{HS\_Grad}) + \beta_{11}(education_{HS\_NoGrad}) + \beta_{12} (education_{College}) 
+\end{eqnarray*}
+
+Where $p$ represents the probability of whether or not a person will vote for Donald Trump in one version of the model, and Joe Biden in the other version. 
+In both models, $\beta_0$ represents the intercept of the model. The coefficients $\beta_1, \beta_2, ..., \beta_{12}$ are the respective coefficients for each term, which represent the change in log odds of a person's intention to vote for a given candidate. The binary variables corresponding to $beta_1$ to $\beta_3$ represent whether or not the person is within the age ranges 30-44, 45-59, or over 60. The binary variables corresponding to $\beta_4$ through $\beta_8$ represent race and classify whether the person is of the groups Chinese or Japanese, Native American, Non-Chinese or Japanese Asians, White, and Other races. The binary variables corresponding to $\beta_{10}$ through $\beta_{12}$ represent education level, in the 3 categories: Less than High School, High School Graduate, and Some College. 
+```{r models, echo=FALSE, include = FALSE}
+
+# Creating the Model
+#Vote for Trump
+modeltrump <- glm(vote_trump ~ as.factor(age_group) + as.factor(gender) + as.factor(education_group) + as.factor(race_group),
+                    data = survey_data, family = binomial)
+#vote for Biden
+modelbiden <- glm(vote_biden ~ as.factor(age_group) + as.factor(gender) + as.factor(education_group) + as.factor(race_group),
+                    data = survey_data, family = binomial)
+
+```
+
+## Post-Stratification 
+
+Poststratification is a method frequently used to aggregate survey-level estimates to the population and correct for non-probability sampling [@little_post-stratification_1993; @wang_forecasting_2015]. With poststratification, estimation of the response variable arises from cell-level estimates that are partitioned into different combinations of variables, which are then aggregated up to a population level by weighting each cell by its relative proportion in the population [@wang_forecasting_2015]. In our analysis, we use post-stratification to estimate the proportion of voters that will vote for Donald Trump and Joe Biden. We draw data from the 2018 American Community Survey [@ruggles_ipums_2020] to partition the electorate population into all possible combinations of sex, age, race, and education level. With the response variable, $\hat{y}^{PS}$ representing the national proportion of voters for each candidate, the post-stratification estimate is defined by
+
+$$\hat{y}^{PS} = {\frac{\sum_{j=1}^{J} N_j\hat{y}_j}{\sum_{j=1}^{J} N_j}}$$  
+
+where $\hat{y}_j$ is the estimated proportion of votes for either Trump or Biden within cell $j$, and $N_j$ is the size of the $j^{th}$ cell in the population. 
+
+
+```{r, echo=FALSE, include = FALSE}
+
+# Here I will perform the post-stratification calculation
+
+census_data$logodds_trump <-
+  modeltrump %>%
+  predict(newdata = census_data)
+
+census_data$logodds_biden <-
+  modelbiden %>%
+  predict(newdata = census_data)
+
+census_data$estimatetrump <-
+  exp(census_data$logodds_trump)/(1+exp(census_data$logodds_trump))
+
+census_data$estimatebiden <-
+  exp(census_data$logodds_biden)/(1+exp(census_data$logodds_biden))
+
+census_data %>%
+  mutate(trump_predict_prop = estimatetrump*n) %>%
+  summarise(trump_predict = sum(trump_predict_prop)/sum(n))
+
+census_data %>%
+  mutate(biden_predict_prop = estimatebiden*n) %>%
+  summarise(biden_predict = sum(biden_predict_prop)/sum(n))
+
+```
+
+### Subpopulation estimation
+While estimating the popular vote is useful, it may not be indicative of the outcome of the election as the allocation of Electoral College votes ultimately determines the presidency [@robertson_electoral_nodate]. Under this system, the candidate who wins popular vote in each state receives the entirety of their Electoral College seats (with the exception of Maine and Nebraska) [@national_archives_what_2019]. Among a total of 538 Electoral College votes, a majority of 270 votes are needed to win [@cunningham_united_2016]. As such, we are interested in calculating the proportion of voters for Trump and Biden within each state, defined as
+
+$$\hat{y}^{PS}_s = {\frac{\sum_{j \epsilon J_s} N_j\hat{y}_j}{\sum_{j \epsilon J_s} N_j}}$$  
+
+where $\hat{y}^{PS}_s$ is the estimate of the proportion of voters for a given candidate in state $s$, and $J_s$ is the set of all cells that comprise state $s$. We then assign a Trump win or a Biden win to each state based on which candidate has a higher $\hat{y}^{PS}_s$. To determine the outcome of the election, we sum for each candidate the Electoral College votes from the states where they have a higher proportion of votes. 
+
+# Results
+## Model results
+Figure \@ref(fig:m) compares the coefficient estimates for the logistic models for Trump and Biden voter intent. Values of these estimates can be found in Appendix \@ref(tab:coefs). As indicated, factors that positively impact on Trump voter intent include male sex, age groups 30-44, 45-59, 60+, and White, Asian and Pacific Islander, and Native American racial groups. Meanwhile, significant factors that negatively impact Biden voter intent include male sex, high school as the highest education level, and White, Asian and Pacific Islander, and Native American racial groups.
+
+```{r m, echo=F, results='asis', fig.cap= "Coefficient estimates for logistic regression equations modelling the probability of voting for Trump and Biden, based on sex, age, race, and education level.", fig.height=3.5}
+
+testplot = plot_summs(modeltrump, modelbiden,
+           model.names = c("Vote for Trump", "Vote for Biden"),
+               coefs = c("Intercept" = "(Intercept)",
+                         "Male" = "as.factor(gender)Male",
+                         "Age: 30 to 44" = "as.factor(age_group)30 - 44",
+                         "Age: 45 to 59" = "as.factor(age_group)45 - 59",
+                         "Age: 60+" = "as.factor(age_group)60+",
+                         "Education: Less than High School" = "as.factor(education_group)Less than High School",
+                         "Education: High School Graduate" = "as.factor(education_group)High School Graduate",
+                         "Education: Some College" = "as.factor(education_group)Some College",
+                         "White" = "as.factor(race_group)White",
+                         "Chinese or Japanese" = "as.factor(race_group)Chinese or Japanese",
+                         "Other Asian or Pacific Islander" = "as.factor(race_group)Other Asian or Pacific Islander",
+                         "Native American or Alaska Native" = "as.factor(race_group)Native American or Alaska Native",
+                         "Other race" = "as.factor(race_group)Other"), 
+           robust = TRUE)
+
+apatheme= theme_bw()+
+theme(panel.grid.major=element_blank(),
+    panel.grid.minor=element_blank(),
+    panel.border=element_blank(),
+    axis.line=element_line(),
+    text=element_text(family=),
+    legend.title=element_blank(), 
+    axis.text=element_text(size=),
+    axis.title=element_text(size=),
+    legend.text = element_text(size =))
+
+testplot  + apatheme + labs(x = "\n Estimate \n ", y = "\n Coefficient \n ")
+```
+
+## Post-stratification estimates
+We estimate the national proportion of voters in favour of voting for Donald Trump and Joe Biden to be 0.397 and 0.406, respectively (Table \@ref(tab:natest)). This is based on our post-stratification analysis of the proportion of voters in favour of each candidate modelled by logistic regression models accounting for sex, age, race, and education level. 
+
+```{r natest, echo=FALSE}
+propBiden = sum(census_data$estimatebiden*census_data$n, na.rm = T)/sum(census_data$n)
+
+propTrump = sum(census_data$estimatetrump*census_data$n, na.rm = T)/sum(census_data$n)
+
+proportions = hux(
+  "Candidate" = c("Trump","Biden"),
+  "Proportion" = c(propTrump, propBiden)
+) 
+proportions %>% 
+  set_bold(1, everywhere) %>% 
+  set_bottom_border(1, everywhere) %>% 
+  set_caption("Estimates of national proportion of voters for 2020 U.S. Presidential Election") %>% 
+  set_caption_width(value = 20)
+
+```
+
+Our post-stratification calculations by state estimate that Biden will receive 305 Electoral College votes, and Trump 233 (Table \@ref(tab:EC)). The breakdown of electoral college seats allocated to each candidate are described in Table \@ref(tab:votestates). 
+
+
+```{r, echo=FALSE, include = FALSE}
+#State-level estimates
+census_data = census_data %>%
+  group_by(statefip) %>%
+  mutate(trump_predict_prop = estimatetrump*n,
+         biden_predict_prop = estimatebiden*n) %>%
+  summarise(trump_predict = sum(trump_predict_prop)/sum(n),
+            biden_predict = sum(biden_predict_prop)/sum(n)) 
+
+census_data = census_data %>% 
+  mutate(biden_win = ifelse(biden_predict > trump_predict, 1, 0),
+         trump_win = ifelse(trump_predict > biden_predict, 1, 0)) %>% 
+  mutate(victor = ifelse(biden_win == 1 & trump_win == 0 , "Biden", "Trump"))
+
+census_data %>%  
+  mutate(victor = ifelse(biden_win == 1 & trump_win == 0 , "Biden", "Trump"))
+
+electoralvotes = c(9, 3, 11, 6, 55, 9, 7, 3, 3, 29, 16, 4, 4, 20, 11, 6, 6, 8, 8, 4, 10, 11, 16, 10, 6, 10, 3, 5, 6, 4, 14, 5, 29, 15, 3, 18, 7, 7, 20, 4, 9, 3, 11, 38, 6, 3, 13, 12, 5, 10, 3)
+
+census_data$electoral_votes = electoralvotes
+
+trump_seats =  sum(census_data$electoral_votes*census_data$trump_win)
+biden_seats =  sum(census_data$electoral_votes*census_data$biden_win)
+```
+
+```{r EC, echo=FALSE}
+seats = hux(
+  "Candidate" = c("Trump","Biden"),
+  "Electoral College votes" = c(trump_seats, biden_seats))
+
+seats %>% 
+  set_bold(1, everywhere) %>% 
+  set_bottom_border(1, everywhere) %>% 
+  set_caption("Estimated total Electoral College votes per candidate in the 2020 U.S. Presidential Election") %>% 
+  set_caption_width(value = 20) %>% 
+  set_latex_float(value = "h!")
+```
+
+
+```{r votestates,echo=FALSE}
+s = c("Alabama", "Alaska", "Arizona", "Arkansas", "California", "Colorado", "Connecticut", "Delaware", "District of Columbia", "Florida", "Georgia", "Hawaii", "Idaho", "Illinois", "Indiana", "Iowa", "Kansas", "Kentucky", "Louisiana", "Maine", "Maryland", "Massachusetts", "Michigan", "Minnesota", "Mississippi", "Missouri", "Montana", "Nebraska", "Nevada", "New Hampshire", "New Jersey", "New Mexico", "New York", "North Carolina", "North Dakota", "Ohio", "Oklahoma", "Oregon", "Pennsylvania", "Rhode Island", "South Carolina", "South Dakota", "Tennessee", "Texas", "Utah", "Vermont", "Virginia", "Washington", "West Virginia", "Wisconsin", "Wyoming")
+
+votebystate = hux(
+  State = s,
+  "Seats" = electoralvotes,
+  "Trump" = census_data$trump_predict,
+  "Biden" = census_data$biden_predict,
+  "Winner" = census_data$victor)
+
+votebystate %>% 
+  set_bold(1, everywhere) %>% 
+  set_bottom_border(1, everywhere) %>% 
+  set_caption("Estimated proportion of voters and allocation of Electoral College seats by state for the 2020 U.S. Presidential Election") %>% 
+  set_latex_float(value = "h!") %>% 
+  set_font_size(value = 8) %>% 
+  restack_across(rows = 27) %>% 
+  set_width(1.1) %>% 
+  set_height(0.7) %>% 
+  set_col_width(col = c(1, 2, 6, 7), value = c(0.13, 0.05, 0.13, 0.05)) %>% 
+  set_caption_width(1) %>% 
+  set_latex_float("h!")
+```
+
+# Discussion
+Our approach used two logistic regression models from voter survey data to model individual intention to vote for Trump and Biden based on sex, age, education, and race. Our model suggests that the male, White, Asian or Pacific Islander, and Native American demographic have the greatest impact on voter preference, namely increased preference for Trump and decreased preference for Biden. Additional factors that positively impacted voter preference for Trump included the age groups 30-44, 45-59, and 60+. Meanwhile, other factors negatively impacting voter preference for Biden included those who did not complete high school or received a high school diploma. The roles of race, sex, education, and age have been documented to influence voter preferences between Republican and Democratic candidates in the 2018 U.S. midterm elections [@noauthor_how_2018], thus demonstrating the power of using demographic characteristics to model and forecast election outcomes.
+
+We then employed post-stratification to the 2018 ACS census data and use our model to estimate the proportion of voters for Trump and Biden at both the national and state level. We found a narrow margin between Biden and Trump at the national scale, with Biden holding a 0.9% lead in the popular vote. Subpopulation calculations at a state level provided a clearer picture of the potential election outcome by estimating the popular vote in each state, and thus the allocation of Electoral College votes. This result suggested a greater preference for Biden, who is estimated to receive 305 Electoral College seats compared to Trump’s 233. Based on these results, our analysis forecasts a Biden victory for the 2020 U.S. Presidential election.
+
+\newpage
+## Weaknesses
+
+While doing our analysis, we found various sources of weakness in the data, the type of model we chose, and other factors we did not consider. Within the data we excluded undecided voters, which may have created bias towards either candidate, and since the data is from June, voters’ opinions may have changed since then. We discussed in the “Model Specifics” section why we chose a logistic model over a multilevel model, but a multilevel model by state would have helped to correct cells with smaller samples in our data [@wang_forecasting_2015]. Finally, there were many factors not included in our analysis. We did not consider factors that may affect voter turnout, such as voting during COVID-19 and voter registration status. Voter turnout may skew the vote towards either candidate, and the effect will only be revealed after the election. There are also some states such as Maine and Nebraska who split their electoral college votes by congressional district, which we did not factor into our individual state analysis, but it would not have made a significant difference in our final predictions [@silver_polls_2018]. 
+
+## Next steps
+There are many possible next steps to this analysis, especially since the results of the 2020 election will soon be revealed. One way to get insight on possible inaccuracies on our model would be to do follow up surveys to see whether the respondents voted, and if they voted for the candidate they reported in June. We could use this data to see if any factors turned out to be poor predictors, or if any factors were more associated with not voting. We can also ask questions about the respondent’s decision to vote, to get a better idea about how much current events impacted voter turnout, which can be useful to consider in future models. 
+
+
+```{r coefs, echo=FALSE, results = 'asis'}
+library(sandwich)
+export_summs(modeltrump, modelbiden,
+               model.names = c("Vote for Trump", "Vote for Biden"),
+               coefs = c("Intercept" = "(Intercept)",
+                         "Male" = "as.factor(gender)Male",
+                         "Age: 30 to 44" = "as.factor(age_group)30 - 44",
+                         "Age: 45 to 59" = "as.factor(age_group)45 - 59",
+                         "Age: 60+" = "as.factor(age_group)60+",
+                         "Education: Less than High School" = "as.factor(education_group)Less than High School",
+                         "Education: High School Graduate" = "as.factor(education_group)High School Graduate",
+                         "Education: Some College" = "as.factor(education_group)Some College",
+                         "White" = "as.factor(race_group)White",
+                         "Chinese or Japanese" = "as.factor(race_group)Chinese or Japanese",
+                         "Other Asian or Pacific Islander" = "as.factor(race_group)Other Asian or Pacific Islander",
+                         "Native American or Alaska Native" = "as.factor(race_group)Native American or Alaska Native",
+                         "Other race" = "as.factor(race_group)Other"), 
+             statistics = c(N = "nobs", "AIC"),
+             scale = FALSE,
+             robust = TRUE, error_format = "({std.error}), ({statistic}, p = {p.value})"
+             ) %>% 
+  set_caption("Appendix - Vote intention coefficient estimates (Standard error), (t-stat, p-value)") %>% 
+  set_font_size(value = 8) %>% 
+  set_height(0.3) %>% 
+  set_latex_float(value = "b")
+```
+
+\newpage
+# References
