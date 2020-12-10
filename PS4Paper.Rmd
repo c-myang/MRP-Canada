@@ -28,6 +28,7 @@ library(tidyverse)
 library(jtools) #Create plots and tables for regression models
 library(ggplot2) #Create plots and diagrams
 library(huxtable) #Make tables
+library(cesR)
 
 # Loading in the cleaned survey Data
 survey_data <- read_csv("survey_data.csv")
