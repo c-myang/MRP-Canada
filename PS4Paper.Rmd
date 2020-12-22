@@ -1,0 +1,537 @@
+---
+title: "Using MRP to assess the impact of low voter turnout on the outcome of the 2019 Canadian Federal Election"
+author: "Cathy Yang"
+date: "December 22nd, 2020"
+abstract: "Voting is the most fundamental form of political participation that ensures democratic ideals, however, in many advanced democracies, voter participation has been on the decline. This analysis examines whether low voter participation rates can influence the outcome of the 2019 Canadian federal election. We fit multi-level models of party support to demographic and geographic variables of age, sex, education level, province, and electoral district, then apply these models on a post-stratified population of eligible Canadian voters. Findings show that with universal voter turnout, the Liberals win narrowly over the Conservative party, with 157 and 145 seats, respectively, suggesting that non-voters and abstainers bear minimal impact in shifting the electoral outcome in Canada. Keywords: MRP, elections, voter turnout, surveys."
+output:
+  bookdown::pdf_document2:
+    citation_package: natbib
+    toc: false
+    number_sections: false 
+    nocite: '@*'
+bibliography: PS4.bib
+biblio-style: "apalike"
+---
+\begin{center}
+Code supporting this analysis can be found at: https://github.com/c-myang/sta304-final
+\end{center}
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+
+library(tidyverse)
+library(huxtable)
+library(ggplot2) #Create plots and diagrams
+library(lme4)
+library(sjPlot)
+library(maps)
+library(sf)
+library(gridExtra)
+library(rmapshaper)
+library(glmmTMB)
+
+# Loading in the cleaned survey Data
+CES_data <- read_csv("CES_data.csv")
+
+# Loading in the cleaned census Data
+censusdata <- read_csv("censusdata.csv")
+```
+# Introduction
+Voting is the most fundamental and basic form of political participation that ensures democratic ideals and equal representation of all citizens. However, in many advanced democracies across the world, voter participation has been on the decline, and Canada is no exception to this trend [@lijphart_unequal_1997]. In Canada, the average voter turnout rate is 70.5% for national elections since 1867, however, this rate has been decreasing over the past 50 years [@rubenson_does_2007]. Voter turnout in the 3 most recent elections risen from 61% in 2011 to 68.3% and 67% in 2015 and 2019 respectively, however the voter turnout rate has not been above 70% since 1992 [@elections_canada_voter_2019]. 
+
+In recent elections, most particularly in 2011, low political participation among the younger demographic was believed to drive party support towards the Conservative party [@grenier_how_2019]. However, the impact of low voter turnout has been minimally investigated, with mixed results. @fowler_electoral_2011 demonstrates that  the introduction of compulsory voting in Australia, led to an increase in Labor Party support and increased pension spending policy. Meanwhile, @rubenson_does_2007 found that simulating increased voter turnout for the 2000 Canadian federal election did not significantly impact its outcome. 
+
+This analysis will examine whether an increased level of voter turnout has implications in the 2019 Canadian federal election. To do so, we employ a multi-level regression and post-stratification (MRP) strategy. MRP has been widely used to estimate national opinion on a wide range of issues, from climate change [@mildenberger_distribution_2016], to COVID-19 reopening policy [@briggs_canadians_2020], and has also been used to accurately estimate the result of federal elections [@wang_forecasting_2015]. The advantage of MRP is the ability to impute estimates from a non-representative sample to a population level by weighting estimates based on each demographic subgroup’s relative share in the population. In this case, we use data gathered from the 2019 Canadian Election Study (CES) [@stephenson_2019_2020] to model support for each of the 6 major federal parties: Liberal, Conservative, New Democratic Party (NDP), Bloc Québécois (BQ), Green, and People’s Party of Canada. We then impute estimates of party support to the population of eligible voters in Canada, derived from the 2016 census [@statistics_canada_age_2017].
+
+This investigation is organized as follows. The Methods section describes the 2019 CES dataset, variable justification and data cleaning procedures, model specifics, and post-stratification calculations. Then, descriptive statistics and findings of the analysis are presented in the Results section. The Discussion section goes over the interpretations and implications of our findings, and finally, we conclude the paper with weaknesses and next steps. 
+
+# Methods
+MRP consists of a two-stage estimation procedure. In the first stage, multi-level regression models are fitted to estimate the relationship between individual and group-level covariates and the outcome of interest [@little_post-stratification_1993]. In the second stage, the predictions of each model are applied for each subgroup belonging to a different combination of individual and group-level variables, and re-weighted based on the subgroup’s share of the population. Together, this approach can predict an outcome variable to a large population based on demographic or geographic factors. 
+
+All data cleaning, modeling, and calculations were carried out using R statistical language [@citeR] and the tidyverse and lme4 packages [@citeTidy; @citelme4]. The packages ggplot, sjPlot, and sf, were used for data visualization [@ggplot2; @sjPlot; @sf]. The Canadian Election Survey data was accessed from the cesR package [@cesR]. The data, data cleaning procedures, model specifics and post-stratification calculations are described in subsequent sections.
+
+## Data
+The multi-level models build from the 2019 Canadian Election Study [@stephenson_2019_2020], a national, large-scale survey conducted during the campaign period prior to the 2019 Canadian federal election, aiming to gather data on Canadians’ voting behaviours, attitudes, and opinions about key political issues. Respondents were sampled in a modified rolling-cross section during from September 13th to October 21st, 2019. The survey and sampling procedures were administered through the Qualtrics online platform. The primary outcome of interest in the CES data, is based on the respondent’s answer to “cps19_votechoice”, which asks what party the respondent thinks they will vote for in the 2019 federal election. The answer choices included one option for each major federal political party in Canada (Conservative, Liberal, NDP, Green, Bloc Québécois, and People’s Party of Canada). Additional answer choices included “Don’t know/Prefer not to answer”, and an option to specify another party. We disregard entries that contain the latter two responses, as they make up a small fraction of the sample and are not outcomes of interest for our models of party preference.
+
+The sampling frame included all Canadian citizens or permanent residents aged 18 or over living in the provinces. To obtain a representative sample of the Canadian population, sampling targets stratified by region and balanced by gender (50% men and 50% women) and age (28% aged 18-34, 33% aged 35-54, 39% aged 55 or higher) were established. While respondents in the territories were not intentionally sampled, they were still eligible for participation. This resulted in a small, non-representative sample from the territories. In total, 37,822 unique responses were gathered from the campaign period survey.
+
+The sampling design of the CES presents some weaknesses. Firstly, restricting the method of survey administration to a purely online format can introduce non-coverage bias, as individuals in the population without computer or internet access are excluded from participation. Secondly, although the sampling design addresses representativeness in terms of age and gender estimates, there may be under-representation of other sociodemographic variables, such as education. Figure \@ref(fig:compare) compares the demographic composition of the CES respondents against the general electorate, derived from the Statistics Canada 2016 census. Here, we can see similar distributions in terms of age and province, however, there is an over-representation of female and some postsecondary-educated respondents, and an under-representation of less than high school or high school-educated respondents in the CES survey. Through MRP, we attempt to correct for some of the biases introduced through non-representative sampling.
+
+```{r compare, echo=F, fig.height= 5 , fig.width = 10, fig.cap= "A comparison of the demographic distributions in the CES dataset and the 2016 Canadian census"}
+#Age plot
+CESages = CES_data %>% 
+  group_by(age_group) %>% 
+  summarise(total = n()) %>% 
+  mutate(prop = total/sum(total), group = "CES") 
+
+ageproportions = censusdata %>% 
+  group_by(age_group) %>% 
+  summarise(total = sum(count)) %>% 
+  mutate(prop = total/sum(total), group = "Census") %>% 
+  add_case(CESages) 
+ageproportions$group = as.factor(ageproportions$group)
+
+plotage = ageproportions %>% ggplot(aes(x = age_group, y = prop, group = group)) + 
+  geom_line(aes(linetype=group)) + geom_point() +
+  labs(x = "Age", y = "Proportion", linetype = "")
+  
+#Sex plot
+CESsex = CES_data %>% 
+  group_by(sex) %>% 
+  summarise(total = n()) %>% 
+  mutate(prop = total/sum(total), group = "CES") 
+
+sexproportions = censusdata %>% 
+  group_by(sex) %>% 
+  summarise(total = sum(count)) %>% 
+  mutate(prop = total/sum(total), group = "Census") %>% 
+  add_case(CESsex) 
+sexproportions$group = as.factor(sexproportions$group)
+
+plotsex = sexproportions %>% ggplot(aes(x = sex, y = prop, group = group)) + 
+  geom_line(aes(linetype=group)) + geom_point() +
+  labs(x = "Sex",y = "Proportion", linetype = "")
+
+#education
+CESedu = CES_data %>% 
+  group_by(education_group) %>% 
+  summarise(total = n()) %>% 
+  mutate(prop = total/sum(total), group = "CES") 
+
+eduproportions = censusdata %>% 
+  group_by(education_group) %>% 
+  summarise(total = sum(count)) %>% 
+  mutate(prop = total/sum(total), group = "Census") %>% 
+  add_case(CESedu) 
+eduproportions$group = as.factor(eduproportions$group)
+
+plotedu = eduproportions %>% ggplot(aes(x = education_group, y = prop, group = group)) + 
+  geom_line(aes(linetype=group)) + geom_point() +
+  labs(x = "Highest education level",y = "Proportion", linetype = "") + 
+  scale_x_discrete(labels = function(education_group) str_wrap(education_group, width = 15)) + 
+  theme(axis.text.x =element_text(size=7))
+
+#province
+CESprov = CES_data %>% 
+  group_by(province) %>% 
+  summarise(total = n()) %>% 
+  mutate(prop = total/sum(total), group = "CES") 
+
+provproportions = censusdata %>% 
+  group_by(province) %>% 
+  summarise(total = sum(count)) %>% 
+  mutate(prop = total/sum(total), group = "Census") %>% 
+  add_case(CESprov) 
+provproportions$group = as.factor(provproportions$group)
+
+plotprov = provproportions %>% ggplot(aes(x = province, y = prop, group = group)) + 
+  geom_line(aes(linetype=group)) + geom_point() +
+  labs(x = "Province",y = "Proportion", linetype = "") + 
+  scale_x_discrete(labels = function(province) str_wrap(province, width = 10)) + 
+  theme(axis.text.x =element_text(size=3))
+
+grid.arrange(plotsex, plotage, plotedu, plotprov, ncol=2, nrow=2)
+```
+
+## Variables and data cleaning 
+
+Many studies have observed the correlation between age, sex, and education levels on voter preferences [@weakliem_effects_2002; @wang_forecasting_2015]. As such, we use these as individual-level covariates in our voter preference models. Similarly, the CES data provides sociodemographic data for each respondent. This allows the variables of age, gender, and highest education level to be aggregated into meaningful subgroups that provide the basis for opinion modeling. Age was aggregated into 4 groups: 18-29, 30-44, 45-60, and 60+ and subjects under 18 were filtered out. Additionally, education level was categorized into 4 groups: less than high school, high school graduate, some postsecondary education, and university graduate. 
+
+An issue in the data involved the measurement of gender and sex characteristics. While the CES data records gender for all its respondents, the post-stratification data only records sex variables. Conflation of gender and sex measurement in survey and census data is commonly observed and brings about important structural and statistical considerations [@kennedy_using_2020]. For this analysis, we impute all non-male genders as female. While this option will mis-gender a proportion of non-binary respondents, it ultimately avoids the ethical concern of removing all of these individuals from the data [@kennedy_using_2020]. As a result, male gender respondents were recategorized as male sex, while female and non-binary genders were grouped into female sex. From a sociological perspective, this option groups non-binary respondents under the sex that has traditionally faced more structural exclusion and oppression [@kennedy_using_2020].
+
+We use data from the 2016 Canadian census [@statistics_canada_age_2017] as the post-stratification dataset. These data provide cross-tabulations for age and sex counts for each federal electoral district. Age and sex variables were coded under the same classifications as the survey data. Education level counts by age and sex group were not provided in the raw data, however, by multiplying the proportion of individuals of each education group in a federal district population by the count values of each age-sex cell, we could obtain an estimate of the number of people in each education level for each age and sex combination.
+
+Along with demographic data, geographic variables at the level of the provinces and federal electoral districts were matched to both the census and post-stratification datasets. This is important for predicting the distribution of Parliamentary seats among federal electoral districts, which serve as primary geographic unit that determines the outcome of Canadian federal elections [@elections_canada_voter_2019]. As such, each response of the is associated with two geographic-level variables: federal electoral district ID and province. 
+
+
+## Model Specifics
+
+In the modeling stage, we fit multi-level logistic regression models of party support based on individual and group-level covariates. Individual-level covariates include age, sex and highest education level, while group-level covariates include the province and federal electoral district. A logistic model serves the purpose of this analysis, as support for a federal party can be modelled on a binary basis (yes or no). Since there are 6 major federal parties in Canada, we fit six models of voter preference for each party.  
+
+The varying-intercept model also allows us to consider the influence that geography can play in determining party support. Inclusion of provincial and federal electoral districts as geographic covariates in MRP modeling has been widely used to estimate national opinion in Canada [@mildenberger_distribution_2016; @briggs_canadians_2020]. Following the random intercept notation adapted from @sonderegger_mixed-effects_2018 and @mildenberger_distribution_2016, the model is expressed as follows:
+
+**(1)** $P(Y_{ij} = 1) = logit^{-1}(\alpha^{province}_{0,j[i]} + \delta^{fed}_{0,k[i]} + \beta^{age}_{l[i]} + \beta^{sex}_{m[i]} + \beta^{edu}_{o[i]})$
+
+$\alpha^{province}_{0,j[i]} = r_{00} + r_{01}*W_{j}$
+
+$\delta^{fed}_{k[i]} = r_{00} + r_{01}*W_{k}$
+
+$Y_ij$ represents support for each major Canadian political party. $\alpha^{province}_{0,j[i]}$ and $\delta^{fed}_{0,k[i]}$ are the random intercepts for each province or territory ($J = 13$) and federal electoral district ($K = 338$), respectively. The remaining  terms, denoted by $\beta^{var}_{l[i]}$ correspond to the coefficients associated with each fixed predictor variable, which are age, sex, and education. Subscripts $l[i]$, $m[i]$, $o[i]$ indicate the demographic subgroup for which the $i^{th}$ respondent belongs. For instance, depending on the the $i^{th}$ respondent's age, they can belong in any of the 4 age group cells: $\beta^{age}_{18-29}$, $\beta^{age}_{30-44}$, $\beta^{age}_{45-59}$, $\beta^{age}_{60+}$.
+
+Under each random intercept term, $r_{00}$ is the intercept, $r_{01}$ is the slope, and $W_{j}$ and $W_{k}$ indicate the value of the province and federal electoral district, respectively.
+
+This model was fitted for each major Canadian party, with the exception of the Bloc Québécois. In Canada, the Bloc Québécois only campaigns for federal seats within the province of Quebec. As a result, support for the party is only observed by respondents located within Quebec. This skew prevented the BQ model from converging. As a compromise, the random intercept term for province, $\alpha^{province}_{0,j[i]}$ was dropped. This allows estimation of support for the BQ party within the province of Quebec, while also keeping a geographic variable in the model. 
+
+```{r models, echo=FALSE, include = FALSE}
+# Creating the Model
+#Vote for Libs
+modelLiberal <- glmer(as.factor(vote_Liberal) ~ as.factor(sex) +
+                        as.factor(age_group) + 
+                        as.factor(education_group) + 
+                        (1|province) + (1|constituencynumber),
+                     data = CES_data, 
+                     family = binomial)
+
+summary(modelLiberal)
+# ranef(modelLiberal) 
+
+#Vote for Cons
+modelConservative <- glmer(as.factor(vote_Conservative) ~ as.factor(sex) +
+                        as.factor(age_group) + 
+                        as.factor(education_group) + 
+                        (1|province)+ (1|constituencynumber),
+                     data = CES_data, 
+                     family = binomial)
+
+summary(modelConservative)
+
+#Vote for NDP
+modelNDP <- glmer(as.factor(vote_NDP) ~ as.factor(sex) +
+                        as.factor(age_group) + 
+                        as.factor(education_group) + 
+                        (1|province) + (1|constituencynumber),
+                     data = CES_data, 
+                     family = binomial)
+
+summary(modelNDP)
+# ranef(modelNDP)
+#Vote for Green
+modelGreen <- glmer(as.factor(vote_Green) ~ as.factor(sex) +
+                        as.factor(age_group) + 
+                        as.factor(education_group) + 
+                        (1|province)+ (1|constituencynumber),
+                     data = CES_data, 
+                     family = binomial)
+summary(modelGreen)
+
+QuebecOnly <- CES_data %>% 
+  filter(constituencynumber >= 24000 & constituencynumber <= 24080)
+
+#Vote for BQ
+modelBQ <- glmer(as.factor(vote_BQ) ~ as.factor(sex) +
+                        as.factor(age_group) + 
+                        as.factor(education_group) + 
+                        (1|constituencynumber),
+                     data = QuebecOnly, 
+                     family = binomial)
+summary(modelBQ)
+
+#Vote for People's
+modelPeoples <- glmer(as.factor(vote_Peoples) ~ as.factor(sex) +
+                        as.factor(age_group) + 
+                        as.factor(education_group) + 
+                        (1|province)+ (1|constituencynumber),
+                     data = CES_data, 
+                     family = binomial)
+
+
+```
+
+## Post-Stratification 
+
+In the post-stratification stage, the census data was split into cells containing population counts for each combination of age, sex and education within each federal electoral district. With 338 federal electoral districts, 2 sex groups, 4 age groups, and 5 education groups, 40,560 unique cells were created. We then use the models of party support to estimate the probability for voting for each of the 6 parties within each cell. Estimation of party support for BQ was only conducted on cells within Quebec. 
+
+Next, we determine the party supported by the majority of the population within each federal electoral district. Within each cell, the multi-level regression estimates for each party was multiplied by its relative population proportion within their electoral district. The result produces estimated proportions of the population that support each of the major Canadian parties. The calculation is described as follows:
+
+**(2)** $\hat{y}^{PS}_s = {\frac{\sum_{j \epsilon J_s} N_j\hat{y}_j}{\sum_{j \epsilon J_s} N_j}}$ 
+
+where $\hat{y}^{PS}_s$ is the estimate of the proportion of voters for a given party in electoral district $s$, and $J_s$ is the set of all cells that comprise district $s$. We then assign a win to the party that has the highest $\hat{y}^{PS}_s$ in the federal electoral district. To determine the outcome of the election, we sum for each party the number of districts where they have a higher proportion of votes to determine the national-level distribution of federal Parliamentary seats.
+
+```{r, echo=FALSE, include = FALSE}
+
+# Here I will perform the post-stratification calculation
+censusdata$age_group = as.factor(censusdata$age_group)
+censusdata$sex = as.factor(censusdata$sex)
+censusdata$education_group = as.factor(censusdata$education_group)
+censusdata$province = as.factor(censusdata$province)
+censusdata$constituencynumber = as.factor(censusdata$constituencynumber)
+
+censusdata$logodds_Liberal <-
+  modelLiberal %>%
+  predict(newdata = censusdata)
+
+censusdata$logodds_Conservative <-
+  modelConservative %>%
+  predict(newdata = censusdata)
+
+censusdata$logodds_NDP <-
+  modelNDP %>%
+  predict(newdata = censusdata)
+
+censusdata$logodds_Green <-
+  modelGreen %>%
+  predict(newdata = censusdata)
+
+censusdata$logodds_Peoples <-
+  modelPeoples %>%
+  predict(newdata = censusdata)
+
+#Calculate Quebec-specific log odds
+censusQuebec <- censusdata %>% 
+  filter(province == "Quebec") 
+censusQuebec$logodds_BQ <-
+  modelBQ %>%
+  predict(newdata = censusQuebec)
+
+#Join back to censusdata table
+Quebec <- tibble(caseID = censusQuebec$caseID,
+                  logodds_BQ = censusQuebec$logodds_BQ)
+censusdata <- censusdata %>% 
+  left_join(by = c("caseID" = "caseID") , Quebec, copy = FALSE, keep = FALSE, na_matches = "na")
+
+#Estimate the probability of voting in each cell
+censusdata$estimateLiberal <-
+  exp(censusdata$logodds_Liberal)/(1+exp(censusdata$logodds_Liberal))
+
+censusdata$estimateConservative <-
+  exp(censusdata$logodds_Conservative)/(1+exp(censusdata$logodds_Conservative))
+
+censusdata$estimateNDP <-
+  exp(censusdata$logodds_NDP)/(1+exp(censusdata$logodds_NDP))
+
+censusdata$estimateGreen <-
+  exp(censusdata$logodds_Green)/(1+exp(censusdata$logodds_Green))
+
+censusdata$estimateBQ <- exp(censusdata$logodds_BQ)/(1+exp(censusdata$logodds_BQ))
+
+censusdata$estimatePeoples <-
+  exp(censusdata$logodds_Peoples)/(1+exp(censusdata$logodds_Peoples))
+
+```
+
+
+# Results
+## Descriptive statistics
+Figure \@ref(fig:Descriptive) shows the distribution of party support across sex, age groups, education levels, and province. This shows the results of the voter support before multi-level modeling and post-stratification. The distribution of party support is split between Liberals and Conservatives, followed by the NDP, Green, and Bloq Québécois. The Liberal, NDP and Green parties are more favoured by female voters, while Conservative, BQ, and People’s party support are balanced between the sexes. Additionally, there is a larger share of university graduates for Liberal supporters compared to Conservative supporters. Finally, we observe a higher share of voters in Alberta, Saskatchewan and Manitoba in support of the Conservative party, while there is a relatively higher share of supporters for the Liberal party in Quebec and Ontario.  
+
+```{r Descriptive, echo=F, results='asis',fig.cap= "Distribution of demographic variables by vote preference in the Canadian Election Survey, 2019", fig.width=12, fig.height = 6}
+
+##Descriptive statistics
+plot1 = CES_data %>%
+  filter(cps19_votechoice != "Another party (please specify)",
+         cps19_votechoice != "Don't know/ Prefer not to answer",
+         cps19_votechoice != "NA's") %>% 
+  ggplot(aes(x = as.factor(cps19_votechoice), fill = sex)) + 
+  labs(x ="", y = "Count", fill = "Sex") +
+  geom_histogram(stat = "count") +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7), axis.text =element_text(size=7)) +
+  scale_x_discrete(labels = function(cps19_votechoice) str_wrap(cps19_votechoice, width = 10))
+
+
+plot2 = CES_data %>%
+  filter(cps19_votechoice != "Another party (please specify)",
+         cps19_votechoice != "Don't know/ Prefer not to answer",
+         cps19_votechoice != "NA's") %>% 
+  ggplot(aes(x = as.factor(cps19_votechoice), fill = age_group)) + 
+  labs(x ="", y = "Count", fill = "Age group") +
+  geom_histogram(stat = "count") +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7), axis.text =element_text(size=7)) +
+  scale_x_discrete(labels = function(cps19_votechoice) str_wrap(cps19_votechoice, width = 10))
+
+
+plot3 = CES_data %>%
+  filter(cps19_votechoice != "Another party (please specify)",
+         cps19_votechoice != "Don't know/ Prefer not to answer",
+         cps19_votechoice != "NA's") %>% 
+  ggplot(aes(x = as.factor(cps19_votechoice), fill = education_group)) + 
+  labs(x ="", y = "Count", fill="Highest education level") +
+  geom_histogram(stat = "count") +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7), axis.text =element_text(size=7)) +
+  scale_x_discrete(labels = function(cps19_votechoice) str_wrap(cps19_votechoice, width = 10))
+
+
+plot4 = CES_data %>%
+  filter(cps19_votechoice != "Another party (please specify)",
+         cps19_votechoice != "Don't know/ Prefer not to answer",
+         cps19_votechoice != "NA's") %>% 
+  ggplot(aes(x = as.factor(cps19_votechoice), fill = province)) + 
+  labs(x ="", y = "Count", fill="Province") +
+  geom_histogram(stat = "count") +
+  theme_minimal() +
+  theme(legend.text = element_text(size=7), axis.text =element_text(size=7)) +
+  scale_x_discrete(labels = function(cps19_votechoice) str_wrap(cps19_votechoice, width = 10)) +
+  guides(fill=guide_legend(ncol=2)) + 
+  scale_fill_discrete(labels = function(province) str_wrap(province, width = 15))
+
+grid.arrange(plot1, plot2, plot3, plot4, ncol=2, nrow=2)
+
+```
+
+## Model results
+Figure \@ref(fig:coefficients) shows the results of the multi-level models, comparing the odds ratio estimates of voter support for each party based on fixed effect variables of age, sex, and education level. These values are summarized in a table in Appendix A. In terms of individual-level effects, the models indicate greater support for the Conservative and Green parties and a decrease in support for the NDP among older age groups. Additionally, male sex increases the odds ratio for Conservative, Green and People’s party support, and decreases support for NDP. For education, models suggest some postsecondary education positively influences support for the Liberal party and decreases support for the People’s and Conservative parties.
+
+```{r coefficients, echo=F, results='asis', fig.cap= "Fixed effects estimates for the multi-level model of voter preference for each major Canadian federal party", fig.height=4}
+
+plot_models(modelConservative, modelLiberal, modelNDP,modelGreen, modelBQ,modelPeoples,
+            axis.labels = c("Education: Some Postsecondary Education","Education: High School Graduate",
+                            "Education: Less than High School", "Age: 60+","Age: 45 to 59",
+                            "Age: 30 to 44", "Male"),
+            m.labels = c("Conservative", "Liberal", "NDP", "Bloc Quebecois", "Green", "People's Party"),
+            colors = c("mediumpurple", "limegreen", "turquoise", "orange", "red",  "blue3"),
+            spacing = 0.6, dot.size = 2,
+            p.shape = TRUE,
+            legend.pval.title	= "Significance (p-level)",
+            legend.title = "Party",
+            transform = NULL
+            )
+
+```
+
+## Post-stratification estimates 
+Table \@ref(tab:EC) shows the estimated distribution of federal Parliamentary seats following the poststratification calculation at the scale of each electoral district. Figure \@ref(fig:Map2) shows the geographic distribution of votes across Canada. This estimation suggests that if everyone was to vote in the 2019 Canadian federal election, the Liberal party would have a narrow margin of victory with 157 Parliamentary seats. Conservatives would follow with 145 seats, Bloq Québécois with 25, NDP with 10, and Green with 1. In comparison to the 2019 election results, there is no change in seats for the Liberal party, and a significant increase in the share of Conservative seats at the expense of NDP and Bloc Québécois seats. This result suggests that there is no large change in the election outcome if everyone voted in the 2019 federal election.
+
+```{r, echo=FALSE, include = FALSE}
+#Federal district-level estimates
+electionresults = censusdata %>%
+  group_by(constituencynumber, GEO_NAME) %>%
+  mutate(Liberal_predict_prop = estimateLiberal*count,
+         Conservative_predict_prop = estimateConservative*count,
+         NDP_predict_prop = estimateNDP*count,
+         Green_predict_prop = estimateGreen*count,
+         BQ_predict_prop = estimateBQ*count,
+         Peoples_predict_prop = estimatePeoples*count) %>%
+  summarise(Liberal_predict = sum(Liberal_predict_prop)/sum(count),
+            Conservative_predict = sum(Conservative_predict_prop)/sum(count),
+            NDP_predict = sum(NDP_predict_prop)/sum(count),
+            Green_predict = sum(Green_predict_prop)/sum(count),
+            BQ_predict = sum(BQ_predict_prop)/sum(count),
+            Peoples_predict = sum(Peoples_predict_prop)/sum(count)) 
+
+#Convert the NA values in BQ to 0 
+electionresults$BQ_predict = electionresults$BQ_predict %>% replace_na(0.0000001)
+electionresults$BQ_predict = as.numeric(electionresults$BQ_predict)
+
+electionresults = electionresults %>% 
+  mutate(Liberal_win = ifelse(Liberal_predict > Conservative_predict & 
+                                Liberal_predict > NDP_predict & 
+                                Liberal_predict > BQ_predict & 
+                                Liberal_predict > Green_predict & 
+                                Liberal_predict > Peoples_predict, 1, 0),
+         Conservative_win = ifelse(Conservative_predict > Liberal_predict & 
+                                     Conservative_predict > NDP_predict & 
+                                     Conservative_predict > BQ_predict & 
+                                     Conservative_predict > Green_predict & 
+                                     Conservative_predict > Peoples_predict, 1, 0),
+         NDP_win = ifelse(NDP_predict > Liberal_predict & 
+                            NDP_predict > Conservative_predict &
+                            NDP_predict > BQ_predict & 
+                            NDP_predict > Green_predict & 
+                            NDP_predict > Peoples_predict, 1, 0),
+         BQ_win = ifelse(BQ_predict > Liberal_predict & 
+                           BQ_predict > NDP_predict & 
+                           BQ_predict > Conservative_predict & 
+                           BQ_predict > Green_predict & 
+                           BQ_predict > Peoples_predict, 1, 0),
+         Green_win = ifelse(Green_predict > Liberal_predict & 
+                              Green_predict > NDP_predict & 
+                              Green_predict > BQ_predict & 
+                              Green_predict > Conservative_predict & 
+                              Green_predict > Peoples_predict, 1, 0),
+         Peoples_win = ifelse(Peoples_predict > Liberal_predict & NDP_predict & 
+                                BQ_predict & Green_predict & Conservative_predict, 1, 0)) 
+
+electionresults$winner <- case_when(electionresults$Liberal_win == 1 ~ "Liberal",
+                                    electionresults$Conservative_win == 1 ~ "Conservative",
+                                    electionresults$NDP_win == 1 ~ "NDP",
+                                    electionresults$BQ_win == 1 ~ "BQ",
+                                    electionresults$Green_win == 1 ~ "Green",
+                                    electionresults$Peoples_win == 1 ~ "People's",
+                                    )
+
+Liberal_seats = sum(electionresults$Liberal_win)
+Conservative_seats = sum(electionresults$Conservative_win)
+NDP_seats = sum(electionresults$NDP_win)
+BQ_seats = sum(electionresults$BQ_win)
+Green_seats = sum(electionresults$Green_win)
+Peoples_seats = sum(electionresults$Peoples_win)
+
+```
+
+
+```{r EC, echo=FALSE}
+seats = hux(
+  "Party" = c("Liberal","Conservative", "NDP", "BQ", "Green", "People's"),
+  "MRP estimate" = c(Liberal_seats, Conservative_seats, NDP_seats, BQ_seats, Green_seats, Peoples_seats),
+  "Official results" = c(157, 121, 24, 32, 3, 0))
+
+seats %>% 
+  set_bold(1, everywhere) %>% 
+  set_bottom_border(1, everywhere) %>% 
+  set_caption("Estimated distribution of Parliamentary seats compared against the 2019 Canadian federal election results") %>% 
+  set_caption_width(value = 20) %>% 
+  set_latex_float(value = "h!")
+```
+
+
+```{r Maps, echo = F,fig.cap= "Map of federal-level electoral outcomes given the model-estimated outcomes if everyone voted", include = F}
+#feddistricts <- st_read("feddistricts/lfed000a16a_e.shp")
+feddistricts <- st_read("cartographic/lfed000b16a_e.shp")
+#feddistricts <- st_read("federal_electoral_districts_boundaries_2019.shp/FED_CA_2019_EN.shp")
+
+feddistricts <- feddistricts %>%
+  mutate(FEDUID = as.factor(FEDUID)) %>%
+  left_join(electionresults, by = c("FEDUID" = "constituencynumber"))
+
+feddistricts$color <- case_when(feddistricts$winner == "Liberal" ~ "red",
+                                feddistricts$winner == "Conservative" ~ "blue3",
+                                feddistricts$winner == "NDP" ~ "orange",
+                                feddistricts$winner == "BQ" ~ "turquoise",
+                                feddistricts$winner == "Green" ~ "limegreen",
+                                feddistricts$winner == "People's" ~ "mediumpurple"
+                                )
+jColors <- feddistricts$color
+names(jColors) <- feddistricts$winner
+
+```
+
+
+```{r Map2, echo = F, fig.cap = "Map of estimated electoral vote distribution if everyone voted in the 2019 Canadian federal election", fig.height= 3}
+
+rgn_simp = ms_simplify(feddistricts, keep = 0.1)
+
+#plot Canada
+ggplot(rgn_simp, aes(fill = winner)) + scale_fill_manual(values = jColors) +
+#map layer
+  geom_sf(color = NA) +
+#borders by province
+  geom_sf(fill = "transparent", color = "gray20", size = 0.25,
+          data = . %>% group_by(PRNAME) %>% summarise()) +
+  theme_void() + labs(fill = "Party") +
+  theme(legend.position = "bottom")
+```
+
+\newpage
+# Discussion
+Conventional wisdom generally assumes that low turnout can bias election outcomes toward right wing parties at the expense of left-leaning parties [@lijphart_unequal_1997]. The reasoning behind this is that citizens who are better off may be more likely to vote and have marked differences in political affiliation than those who do not vote [@rubenson_does_2007]. We tested this assumption for the 2019 federal election, using Canadian Election Study data to fit a multi-level logistic models of voter for support for each political party based on demographic and geographic variables, then imputing these estimates to the Canadian electorate population through post-stratification. Findings suggest that if everyone voted in the election, the Liberal Party would still hold on to a minority government, keeping hold of the same number of Parliamentary seats.
+
+We found limited evidence that non-voters and abstainers hold significant ability to shift the electoral outcome towards left-leaning parties. Rather, we find a significant increase in support for the Conservative party, gaining 24 seats at the expense of left-of-centre parties such as the NDP and the Bloc Québécois (Table \@ref(tab:EC)) . This may be due to a number of factors. Firstly, our multi-level models suggest that support for Conservative party was greatly favoured among older age groups of 30 to 44, 45 to 59, and 60 and above. Meanwhile, support for the NDP and Bloc Québécois significantly decreases with age (Figure \@ref(fig:coefficients)). Despite this polarity in party support between age groups, in Canada, the proportion of the younger demographic is relatively low compared to older age groups, suggesting that even with higher voter turnout rates, there would not be any shift towards left-leaning parties. Additionally, a higher-educated demographic also tends to favour Liberal party support in the multi-level models. However, with a higher proportion of less than or high school-educated individuals in the electorate compared to the CES survey, (Figure \@ref(fig:compare)), the post-stratification calculations suggest increased support in the population for the Conservative party. 
+
+Geography also plays a role in influencing political opinion, as Figure \@ref(fig:Map2) displays overwhelming support for the Conservative party in the prairie provinces of Alberta, Saskatchewan, Manitoba, and in rural Ontario. Meanwhile, Liberal and NDP support is evident in large city centres, such as Toronto, Vancouver, and Montreal, and also in the Maritime provinces. The geographic distribution from our estimation overall does not change much from the actual election outcome (Appendix B), with the exception of a few electoral districts in west British Columbia and Quebec. 
+
+## Weaknesses and next steps
+There were several limitations in the analysis which could be improved upon in future investigations. Firstly, the CES did not intentionally sample from residents residing in the territories, however, respondents were still able to participate. This resulted in a very sparse sample size, which may have skewed support towards parties that may not be accurate of true party support in these populations. Given that the aim of this analysis was to determine the outcome of the election if the entire eligible population voted, the territories were kept in the survey. However, they could have been removed and the analysis could have been restricted to the provinces to obtain more accurate modeling results.
+
+Additionally, our modeling and post-stratification calculations could have been conducted on a wider variety of demographic variables, such as income/class, or race. These variables have been used previously in MRP-based simulations of electoral outcomes [@wang_forecasting_2015; @rubenson_does_2007]. However, in the CES survey, the coding of race was on a “choose all that apply” basis, presenting challenges in coding respondents to mutually exclusive race categories. Additionally, the response rates for income in the survey were very low, which significantly decreases the sample size for modeling stage of MRP. Future work could use political opinion surveys with more robust race and income data to determine whether varying political affiliations along race and class lines would impact the outcome of future elections. 
+
+Finally, this analysis does not assess how the political opinions of non-voters or abstainers may differ from active voters. Some political science scholars argue that if abstainers were to become mobilized to vote, their political preferences would also change [@lijphart_unequal_1997]. As such, an alternative method could have fitted party preference models based solely on the respondents in the CES who specify they are likely to vote. This analysis would then follow the assumption that if everyone in the eligible population actively participated in elections, that they would also have a strong shift in voter opinion that may shift the political climate of the country towards a different direction. 
+
+In summary, while there are many consequences of decreased voter participation that have yet to be explored, in our analysis, we do not observe a change in the electoral outcome for the 2019 Canadian federal election. This is mainly attributed to the demographic make-up in Canada, in which the older demographic outnumbers the younger demographic. Although we do not find any significant shift in Canada, this analysis could be of use to examine whether electoral outcomes may change for countries with a more significant share of eligible young voters.
+
+<div id="refs"> </div>
+
+\newpage
+# Appendix
+**Appendix A:** Table of model estimates of voter preference for each major federal Canadian party
+![](/Users/cathyyang/OneDrive - University of Toronto/4th Year Drive/STA304/PS4/table.png)
+
+**Appendix B:** Map of the official results for the 2019 Canadian federal election. From @noauthor_43rd_2019
+
+![](/Users/cathyyang/OneDrive - University of Toronto/4th Year Drive/STA304/PS4/ERMap_43.jpg){width=500}
+
+
