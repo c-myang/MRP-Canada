@@ -1,4 +1,4 @@
-# sta304-final
+# Using MRP to assess the impact of low voter turnout on the outcome of the 2019 Canadian Federal Election
 
 # Overview
 This repo contains code and data supporting the MRP analysis of "Using MRP to assess the impact of low voter turnout on the outcome of the 2019 Canadian Federal Election". Some data is unable to be shared publicly. These are detailed below:
